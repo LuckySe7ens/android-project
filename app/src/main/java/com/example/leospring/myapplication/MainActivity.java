@@ -25,6 +25,7 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.json.JSONObject;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,14 +34,51 @@ import java.util.Map;
 public class MainActivity extends Activity {
     Button login;
     String qzId = "5417";
+    TextView account;
+    TextView pass;
+    TextView memberId;
+
+    private  MyHandler myHandler = new MyHandler(this);
+
+    static class MyHandler extends Handler {
+        //持有弱引用HandlerActivity,GC回收时会被回收掉.
+        private final WeakReference<MainActivity> mActivty;
+
+        public MyHandler(MainActivity activity) {
+            mActivty = new WeakReference<MainActivity>(activity);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            if (mActivty.get() == null) return;
+            switch (msg.what) {
+                case 1:
+                    mActivty.get().sendRequest(mActivty.get().account.getText().toString(), mActivty.get().pass.getText().toString(), mActivty.get().memberId.getText().toString(),mActivty.get().qzId);
+                    break;
+                case 2:
+                    Toast.makeText(mActivty.get(), "打卡成功", Toast.LENGTH_SHORT).show();
+                    break;
+                case 3:
+                    Toast.makeText(mActivty.get(), "打卡失败", Toast.LENGTH_SHORT).show();
+                    break;
+                case 4:
+                    Toast.makeText(mActivty.get(), "加密失败", Toast.LENGTH_SHORT).show();
+                    break;
+            }
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        login = (Button)findViewById(R.id.login);
-        Button cancle = (Button)findViewById(R.id.quit);
+        account = (TextView) findViewById(R.id.account);
+        pass = (TextView) findViewById(R.id.pwd);
+        memberId = (TextView) findViewById(R.id.memberId);
+        login = (Button) findViewById(R.id.login);
+        Button cancle = (Button) findViewById(R.id.quit);
 
         login.setOnClickListener(new LoginListener());
         cancle.setOnClickListener(new LoginoutListener());
@@ -71,13 +109,18 @@ public class MainActivity extends Activity {
     private class LoginListener implements View.OnClickListener {
         @Override
         public void onClick(View view) {
-            TextView account = (TextView)findViewById(R.id.account);
-            TextView pass = (TextView)findViewById(R.id.pwd);
-            TextView memberId = (TextView)findViewById(R.id.memberId);
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    String encrypt = getEncryptedAttentance();
+                    Log.i("Test", "Encrypt ..." + encrypt);
+                    Message message = myHandler.obtainMessage();
+                    message.what = 1;
+                    message.obj = encrypt;
+                    myHandler.sendMessage(message);
+                }
+            }).start();
 
-            String encrypt = getEncryptedAttentance();
-            Log.i("Test","Encrypt ..." + encrypt);
-            sendRequest(account.getText().toString(), pass.getText().toString(), memberId.getText().toString(), qzId);
         }
     }
 
@@ -89,26 +132,24 @@ public class MainActivity extends Activity {
     }
 
     private void sendRequest(String account, String password, final String memberId, final String qzId) {
-        final Handler handler = new Handler();
         new Thread(new Runnable() {
             @Override
             public void run() {
-                Message msg = new Message();
-                Log.i("Test","encrypt ...");
+                Log.i("Test", "encrypt ...");
                 String encrypt = getEncryptedAttentance();
-                Log.i("Test","after encrypt ..." + encrypt);
+                Log.i("Test", "after encrypt ..." + encrypt);
 
 
-                Log.i("Test","start send reqeust...");
+                Log.i("Test", "start send reqeust...");
                 HttpClient client = new DefaultHttpClient();
                 String url = "https://ezone.yonyoucloud.com/signin/index/webLogin?" + "qzId=" + qzId + "&memberId=" + memberId;
                 HttpGet get = new HttpGet(url);
                 try {
-                    Log.i("Test","start get token info");
+                    Log.i("Test", "start get token info");
                     HttpResponse response = client.execute(get);
-                    Log.i("Test","token response:" + response);
-                    Log.i("Test","after get token info");
-                    Log.i("Test",EntityUtils.toString(response.getEntity(),"utf-8"));
+                    Log.i("Test", "token response:" + response);
+                    Log.i("Test", "after get token info");
+                    Log.i("Test", EntityUtils.toString(response.getEntity(), "utf-8"));
                     if (response.getStatusLine().getStatusCode() == 200) {
                         HttpEntity entity = response.getEntity();
                         String s = EntityUtils.toString(entity, "UTF-8");
@@ -123,22 +164,32 @@ public class MainActivity extends Activity {
                         List<NameValuePair> params = new ArrayList<NameValuePair>();
                         params.add(new BasicNameValuePair("encryptedAttentance", getEncryptedAttentance()));
                         post.setEntity(new UrlEncodedFormEntity(params));
-                        msg.obj = response;
-//                        HttpResponse postResponse = client2.execute(post);
-//                        if(postResponse.getStatusLine().getStatusCode() == 200) {
-//                            Toast toast = Toast.makeText(MainActivity.this, "打卡成功", Toast.LENGTH_SHORT);
-//                            toast.show();
-//                        }
-                    }else {
-                        Toast.makeText(MainActivity.this, "打卡失败" + EntityUtils.toString(response.getEntity(),"UTF-8"), Toast.LENGTH_SHORT);
+
+                        HttpResponse postResponse = client2.execute(post);
+                        if (postResponse.getStatusLine().getStatusCode() == 200) {
+                            Message msg = myHandler.obtainMessage();
+                            msg.what = 2;
+                            msg.obj = response;
+                            myHandler.sendMessage(msg);
+
+                        } else {
+                            Message msg = myHandler.obtainMessage();
+                            msg.what = 3;
+                            myHandler.sendMessage(msg);
+                        }
+                    } else {
+                        Message msg = myHandler.obtainMessage();
+                        msg.what = 3;
+                        myHandler.sendMessage(msg);
                     }
                 } catch (Throwable e) {
-                    Log.e("Test",e.getLocalizedMessage());
-                    Toast.makeText(MainActivity.this, "打卡失败" + e.getLocalizedMessage(), Toast.LENGTH_SHORT);
+                    Log.e("Test", e.getLocalizedMessage());
+                    Message msg = myHandler.obtainMessage();
+                    msg.what = 3;
+                    myHandler.sendMessage(msg);
                 } finally {
 
                 }
-                handler.sendMessage(msg);
             }
         }).start();
 
@@ -162,17 +213,17 @@ public class MainActivity extends Activity {
             json.put("deviceModel", "MI 5s Plus");
             json.put("deviceName", "小米");
             json.put("isRoot", 0);
-            Log.i("Test",json.toString());
+            Log.i("Test", json.toString());
 
-            Map<String,String> params = new HashMap<>();
-            params.put("data",json.toString());
-            params.put("type","aes");
-            params.put("arg","m=ecb_pad=pkcs5_block=128_p=light-app-123456_i=255_o=1_s=utf-8_t=0");
+            Map<String, String> params = new HashMap<>();
+            params.put("data", json.toString());
+            params.put("type", "aes");
+            params.put("arg", "m=ecb_pad=pkcs5_block=128_p=light-app-123456_i=255_o=1_s=utf-8_t=0");
             String response = HttpUtils.submitPostData("http://tool.chacuo.net/cryptaes", params, "UTF-8");
             JSONObject obj = new JSONObject(response);
             String token = obj.getJSONArray("data").get(0).toString();
-            Toast toast = Toast.makeText(MainActivity.this, "加密结果：" + token, Toast.LENGTH_SHORT);
-            toast.show();
+//            Toast toast = Toast.makeText(MainActivity.this, "加密结果：" + token, Toast.LENGTH_SHORT);
+//            toast.show();
             return token;
 //            HttpClient client = new DefaultHttpClient();
 //            HttpPost post = new HttpPost("http://tool.chacuo.net/cryptaes");
@@ -195,9 +246,11 @@ public class MainActivity extends Activity {
 //                Toast.makeText(MainActivity.this, "打卡失败" + EntityUtils.toString(response.getEntity(),"UTF-8"), Toast.LENGTH_SHORT);
 //            }
         } catch (Throwable e) {
-            Log.e("Test",e.getLocalizedMessage());
-            Toast toast = Toast.makeText(MainActivity.this, "加密失败" + e.getLocalizedMessage(), Toast.LENGTH_SHORT);
-            toast.show();
+//            Log.e("Test", e.getLocalizedMessage());
+            e.printStackTrace();
+            Message msg = myHandler.obtainMessage();
+            msg.what = 4;
+            myHandler.sendMessage(msg);
         }
         return null;
     }
