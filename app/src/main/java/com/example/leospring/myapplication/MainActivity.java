@@ -54,7 +54,8 @@ public class MainActivity extends Activity {
             if (mActivty.get() == null) return;
             switch (msg.what) {
                 case 1:
-                    mActivty.get().sendRequest(mActivty.get().account.getText().toString(), mActivty.get().pass.getText().toString(), mActivty.get().memberId.getText().toString(),mActivty.get().qzId);
+                    String encrypt= (String) msg.obj;
+                    mActivty.get().sendRequest(encrypt,mActivty.get().account.getText().toString(), mActivty.get().pass.getText().toString(), mActivty.get().memberId.getText().toString(),mActivty.get().qzId);
                     break;
                 case 2:
                     Toast.makeText(mActivty.get(), "打卡成功", Toast.LENGTH_SHORT).show();
@@ -84,27 +85,6 @@ public class MainActivity extends Activity {
         cancle.setOnClickListener(new LoginoutListener());
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
 
     private class LoginListener implements View.OnClickListener {
         @Override
@@ -120,7 +100,6 @@ public class MainActivity extends Activity {
                     myHandler.sendMessage(message);
                 }
             }).start();
-
         }
     }
 
@@ -131,31 +110,29 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void sendRequest(String account, String password, final String memberId, final String qzId) {
+    private void sendRequest(final String encrypt,String account, String password, final String memberId, final String qzId) {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                Log.i("Test", "encrypt ...");
-                String encrypt = getEncryptedAttentance();
                 Log.i("Test", "after encrypt ..." + encrypt);
 
 
                 Log.i("Test", "start send reqeust...");
                 HttpClient client = new DefaultHttpClient();
                 String url = "https://ezone.yonyoucloud.com/signin/index/webLogin?" + "qzId=" + qzId + "&memberId=" + memberId;
-                HttpGet get = new HttpGet(url);
+                HttpPost post1 = new HttpPost(url);
                 try {
                     Log.i("Test", "start get token info");
-                    HttpResponse response = client.execute(get);
+                    HttpResponse response = client.execute(post1);
                     Log.i("Test", "token response:" + response);
                     Log.i("Test", "after get token info");
-                    Log.i("Test", EntityUtils.toString(response.getEntity(), "utf-8"));
                     if (response.getStatusLine().getStatusCode() == 200) {
                         HttpEntity entity = response.getEntity();
                         String s = EntityUtils.toString(entity, "UTF-8");
                         JSONObject obj = new JSONObject(s);
                         String token = obj.getString("data");
-                        Toast.makeText(MainActivity.this, "gen-token:" + token, Toast.LENGTH_SHORT).show();
+                        Log.i("Test", "gen-token:" + token);
+
                         HttpClient client2 = new DefaultHttpClient();
                         String url2 = "https://ezone.yonyoucloud.com/signin/attentance/encryptSignIn?token=" + token + "&clientV=1-5.3.0-1-1";
                         HttpPost post = new HttpPost(url2);
@@ -222,6 +199,7 @@ public class MainActivity extends Activity {
             String response = HttpUtils.submitPostData("http://tool.chacuo.net/cryptaes", params, "UTF-8");
             JSONObject obj = new JSONObject(response);
             String token = obj.getJSONArray("data").get(0).toString();
+
 //            Toast toast = Toast.makeText(MainActivity.this, "加密结果：" + token, Toast.LENGTH_SHORT);
 //            toast.show();
             return token;
